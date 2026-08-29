@@ -13,17 +13,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
-      - name: Check if Secret is Empty
-        run: |
-          if [ -z "${{ secrets.SYNC_PAT }}" ]; then
-            echo "ERROR: The SYNC_PAT secret is empty or missing!"
-            exit 1
-          else
-            echo "SUCCESS: The secret is loaded and ready."
-          fi
+          # This line stops GitHub from overriding your SYNC_PAT
+          persist-credentials: false 
 
       - name: Force Push to Destination
         run: |
-          git remote add destination https://${{ secrets.SYNC_PAT }}@github.com/villainletgalledev/villa-inlet-pms.git
+          git remote add destination https://x-access-token:${{ secrets.SYNC_PAT }}@github.com/villainletgalledev/villa-inlet-pms.git
           git push destination main --force
