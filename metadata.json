@@ -1,0 +1,6 @@
+{
+  "name": "Villa Inlet PMS",
+  "description": "Property management system for Villa Inlet featuring booking calendar, rooms, housekeeping, maintenance, inventory, reports, user management, and central iCal channel synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

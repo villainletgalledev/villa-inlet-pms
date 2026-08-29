@@ -1,0 +1,322 @@
+// Prisma schema for Villa Inlet PMS
+// Documentation: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  STAFF
+  HOUSEKEEPER
+  MAINTENANCE
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  CLEANING
+  MAINTENANCE
+}
+
+enum BookingStatus {
+  CONFIRMED
+  PENDING
+  CANCELLED
+  COMPLETED
+}
+
+enum BookingSource {
+  DIRECT
+  AIRBNB
+  BOOKING_COM
+  OTHER
+}
+
+enum HousekeepingTaskType {
+  CHECKOUT_CLEAN
+  RECURRING_CLEAN
+  DEEP_CLEAN
+  OUTSOURCED
+}
+
+enum HousekeepingTaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  SKIPPED
+}
+
+enum ScheduleFrequency {
+  WEEKLY
+  MONTHLY
+  SPECIFIC_DATE
+}
+
+enum InventoryCategory {
+  LINENS
+  TOILETRIES
+  CLEANING_SUPPLIES
+  KITCHEN
+  MAINTENANCE_SUPPLIES
+  OTHER
+}
+
+enum InventoryTransactionType {
+  RESTOCK
+  USAGE
+  ADJUSTMENT
+}
+
+enum MaintenanceCategory {
+  ELECTRICAL
+  PLUMBING
+  AC
+  POOL
+  APPLIANCE
+  STRUCTURAL
+  OTHER
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum MaintenanceStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CANNOT_FIX
+}
+
+model User {
+  id                         String                 @id @default(uuid())
+  email                      String                 @unique
+  fullName                   String
+  role                       Role                   @default(STAFF)
+  isActive                   Boolean                @default(true)
+  lastLoginAt                DateTime?
+  housekeepingTasks          HousekeepingTask[]
+  inventoryTransactions      InventoryTransaction[]
+  assignedMaintenanceIssues  MaintenanceIssue[]     @relation("AssignedMaintenanceIssues")
+  reportedMaintenanceIssues  MaintenanceIssue[]     @relation("ReportedMaintenanceIssues")
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+}
+
+model Room {
+  id                    String                      @id @default(uuid())
+  name                  String
+  roomNumber            String                      @unique
+  maxOccupancy          Int                         @default(2)
+  basePrice             Decimal                     @db.Decimal(10, 2)
+  amenities             String[]                    @default([])
+  description           String                      @default("") @db.Text
+  imageUrls             String[]                    @default([])
+  status                RoomStatus                  @default(AVAILABLE)
+  bookings              Booking[]
+  housekeepingTasks     HousekeepingTask[]
+  recurringSchedules    RecurringCleaningSchedule[]
+  inventoryTransactions InventoryTransaction[]
+  maintenanceIssues     MaintenanceIssue[]
+  externalFeeds         ExternalCalendarFeed[]
+  syncConflicts         SyncConflict[]
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+}
+
+model Booking {
+  id                String                @id @default(uuid())
+  roomId            String
+  room              Room                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  guestName         String
+  guestEmail        String
+  guestPhone        String                @default("")
+  checkIn           DateTime
+  checkOut          DateTime
+  numGuests         Int                   @default(1)
+  totalAmount       Decimal               @db.Decimal(10, 2)
+  amountPaid        Decimal               @default(0) @db.Decimal(10, 2)
+  status            BookingStatus         @default(CONFIRMED)
+  source            BookingSource         @default(DIRECT)
+  notes             String                @default("") @db.Text
+  checkedOutAt      DateTime?
+  externalUid       String?               @unique
+  externalFeedId    String?
+  externalFeed      ExternalCalendarFeed? @relation(fields: [externalFeedId], references: [id], onDelete: SetNull)
+  conflictsAsDirect SyncConflict[]        @relation("ConflictingDirectBooking")
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([roomId])
+  @@index([checkIn, checkOut])
+  @@index([externalFeedId])
+}
+
+model HousekeepingTask {
+  id                   String                 @id @default(uuid())
+  roomId               String
+  room                 Room                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  assignedToUserId     String?
+  assignedTo           User?                  @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  bookingId            String?
+  taskType             HousekeepingTaskType   @default(CHECKOUT_CLEAN)
+  status               HousekeepingTaskStatus @default(PENDING)
+  scheduledDate        DateTime
+  completedAt          DateTime?
+  checklist            Json                   @default("[]")
+  isOutsourced         Boolean                @default(false)
+  outsourcedVendorName String?
+  notes                String                 @default("") @db.Text
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  @@index([roomId])
+  @@index([assignedToUserId])
+  @@index([scheduledDate])
+  @@index([status])
+}
+
+model RecurringCleaningSchedule {
+  id                   String            @id @default(uuid())
+  roomId               String
+  room                 Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  frequency            ScheduleFrequency @default(WEEKLY)
+  dayOfWeek            Int? // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  dayOfMonth           Int? // 1 - 31
+  specificDate         DateTime?
+  checklistTemplate    Json              @default("[]")
+  isOutsourced         Boolean           @default(false)
+  outsourcedVendorName String?
+  active               Boolean           @default(true)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@index([roomId])
+}
+
+model InventoryItem {
+  id                String                 @id @default(uuid())
+  name              String
+  category          InventoryCategory      @default(OTHER)
+  unit              String                 @default("pcs")
+  currentStock      Int                    @default(0)
+  lowStockThreshold Int                    @default(5)
+  notes             String?                @db.Text
+  transactions      InventoryTransaction[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([category])
+}
+
+model InventoryTransaction {
+  id                String                   @id @default(uuid())
+  itemId            String
+  item              InventoryItem            @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type              InventoryTransactionType
+  quantity          Int
+  relatedRoomId     String?
+  relatedRoom       Room?                    @relation(fields: [relatedRoomId], references: [id], onDelete: SetNull)
+  performedByUserId String?
+  performedBy       User?                    @relation(fields: [performedByUserId], references: [id], onDelete: SetNull)
+  note              String?                  @db.Text
+  createdAt         DateTime                 @default(now())
+
+  @@index([itemId])
+  @@index([relatedRoomId])
+  @@index([performedByUserId])
+  @@index([createdAt])
+}
+
+model MaintenanceIssue {
+  id               String              @id @default(uuid())
+  roomId           String?
+  room             Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  title            String
+  description      String              @db.Text
+  category         MaintenanceCategory @default(OTHER)
+  priority         MaintenancePriority @default(MEDIUM)
+  status           MaintenanceStatus   @default(OPEN)
+  assignedToUserId String?
+  assignedTo       User?               @relation("AssignedMaintenanceIssues", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  reportedByUserId String
+  reportedBy       User                @relation("ReportedMaintenanceIssues", fields: [reportedByUserId], references: [id], onDelete: Cascade)
+  photoUrls        String[]            @default([])
+  resolutionNotes  String?             @db.Text
+  createdAt        DateTime            @default(now())
+  resolvedAt       DateTime?
+
+  @@index([roomId])
+  @@index([assignedToUserId])
+  @@index([reportedByUserId])
+  @@index([status])
+  @@index([priority])
+  @@index([category])
+}
+
+enum ExternalFeedSource {
+  AIRBNB
+  BOOKING_COM
+  OTHER
+}
+
+enum FeedSyncStatus {
+  NEVER_SYNCED
+  SUCCESS
+  FAILED
+}
+
+model ExternalCalendarFeed {
+  id             String             @id @default(uuid())
+  source         ExternalFeedSource @default(AIRBNB)
+  label          String
+  feedUrl        String?            @db.Text
+  roomId         String?
+  room           Room?              @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  lastSyncedAt   DateTime?
+  lastSyncStatus FeedSyncStatus     @default(NEVER_SYNCED)
+  lastSyncError  String?            @db.Text
+  isActive       Boolean            @default(true)
+  bookings       Booking[]
+  conflicts      SyncConflict[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([roomId])
+  @@index([isActive])
+}
+
+model SyncConflict {
+  id                   String               @id @default(uuid())
+  feedId               String
+  feed                 ExternalCalendarFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  externalUid          String
+  roomId               String?
+  room                 Room?                @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  conflictingBookingId String?
+  conflictingBooking   Booking?             @relation("ConflictingDirectBooking", fields: [conflictingBookingId], references: [id], onDelete: SetNull)
+  summary              String               @db.Text
+  checkIn              DateTime
+  checkOut             DateTime
+  resolved             Boolean              @default(false)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([feedId])
+  @@index([resolved])
+}
+
+
+
