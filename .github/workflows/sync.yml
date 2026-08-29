@@ -1,0 +1,20 @@
+name: Sync to Vercel Repo
+
+on:
+  push:
+    branches:
+      - main 
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Force Push to Destination
+        run: |
+          git remote add destination https://${{ secrets.SYNC_PAT }}@github.com/villainletgalledev/villa-inlet-pms.git
+          git push destination main --force
