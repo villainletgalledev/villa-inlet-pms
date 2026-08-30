@@ -3,6 +3,7 @@ import { getPrisma } from '../../lib/prisma';
 import { canManageBookings, isOwnerOrManager, UserRole } from '../../lib/rbac';
 import { authenticateRequest } from '../auth';
 
+
 const router = express.Router();
 
 // Fallback in-memory bookings for sandbox / preview
