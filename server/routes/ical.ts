@@ -1,9 +1,24 @@
 import express, { Request, Response } from 'express';
-import ical, { ICalEventBusyStatus, ICalEventTransparency } from 'ical-generator';
+import * as icalGeneratorModule from 'ical-generator';
 import { getPrisma } from '../../lib/prisma';
 import { authenticateRequest, requireAuth } from '../auth';
 import { isOwnerOrManager } from '../../lib/rbac';
 import { syncCalendarFeed, syncAllActiveFeeds } from '../../lib/ical-sync';
+
+// Robust interop: handle both default export, named export, and double-wrapped __toESM objects
+const getIcalGenerator = (): typeof icalGeneratorModule.default => {
+  const mod: any = icalGeneratorModule;
+  if (typeof mod === 'function') return mod;
+  if (typeof mod.default === 'function') return mod.default;
+  if (mod.default && typeof mod.default.default === 'function') return mod.default.default;
+  if (typeof mod.ICalCalendar === 'function') {
+    return (data: any) => new mod.ICalCalendar(data);
+  }
+  throw new Error('Unable to resolve ical-generator constructor function');
+};
+
+const ICalEventBusyStatus = (icalGeneratorModule as any).ICalEventBusyStatus || { BUSY: 'BUSY', FREE: 'FREE' };
+const ICalEventTransparency = (icalGeneratorModule as any).ICalEventTransparency || { OPAQUE: 'OPAQUE', TRANSPARENT: 'TRANSPARENT' };
 
 const router = express.Router();
 
@@ -91,7 +106,8 @@ async function handleOutboundFeed(req: Request, res: Response) {
       orderBy: { checkIn: 'asc' },
     });
 
-    const calendar = ical({
+    const createCalendar = getIcalGenerator();
+    const calendar = createCalendar({
       name: 'Villa Inlet PMS - Outbound Calendar',
       description: 'Synchronized reservation calendar for Villa Inlet Galle',
       prodId: '//Villa Inlet PMS//Outbound iCal Feed//EN',
